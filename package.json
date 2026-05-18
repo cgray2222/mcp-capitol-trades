@@ -1,7 +1,11 @@
 {
-  "name": "@anguslin/mcp-capitol-trades",
-  "version": "1.0.1",
-  "description": "MCP Server for extracting politician stock trades with prices from Capitol Trades. No API key required.",
+  "name": "@cgray2222/mcp-capitol-trades",
+  "version": "1.0.2",
+  "description": "Fork: MCP Server for extracting politician stock trades with prices from Capitol Trades. Fixed politician/issuer ID text matching + sequential request queue.",
+  "repository": "github:cgray2222/mcp-capitol-trades",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "build/src/index.js",
   "bin": {
