@@ -12,6 +12,35 @@ export * from "./types.js";
 // Import the trade parsing functions
 import { scrapePoliticianTrades, getIssuerId, getPoliticianId, getTopTradedAssets, getPoliticianStats, getAssetStats, getBuyMomentumAssets, getPartyBuyMomentum } from "./politician-trades-scraper.js";
 
+// Sequential request queue — prevents response ordering issues over stdio transport.
+// When multiple requests arrive while one is still scraping (slow website), the stdout
+// pipe buffers responses out of order. Processing one at a time ensures response ordering.
+const requestQueue: (() => Promise<void>)[] = [];
+let processingQueue = false;
+
+async function enqueueRequest<T>(fn: () => Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    requestQueue.push(async () => {
+      try {
+        const result = await fn();
+        resolve(result);
+      } catch (e) {
+        reject(e);
+      }
+    });
+    if (!processingQueue) processQueue();
+  });
+}
+
+async function processQueue(): Promise<void> {
+  processingQueue = true;
+  while (requestQueue.length > 0) {
+    const next = requestQueue.shift();
+    if (next) await next();
+  }
+  processingQueue = false;
+}
+
 /**
  * MCP Capitol Trades Server
  * Provides tools for extracting politician stock trades with prices from Capitol Trades
@@ -192,13 +221,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
-  try {
-    if (!args) {
-      throw new Error("Arguments are required");
-    }
+  // Queue request to prevent response ordering issues over stdio
+  return enqueueRequest(async () => {
+    try {
+      if (!args) {
+        throw new Error("Arguments are required");
+      }
 
-    switch (name) {
-      case "get_politician_trades": {
+      switch (name) {
+        case "get_politician_trades": {
         const symbol = args.symbol as string | null;
         const politician = args.politician as string | null;
         // Normalize party: undefined or null both become null
@@ -390,6 +421,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       isError: true,
     };
   }
+  })  // close enqueueRequest
 });
 
 /**

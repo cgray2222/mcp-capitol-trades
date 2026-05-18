@@ -234,8 +234,11 @@ export async function scrapePoliticianTrades(url: string, limit: number = 50): P
  * @returns The issuer ID (e.g., "apple-inc", "microsoft-corp")
  */
 export async function getIssuerId(issuer: string): Promise<string> {
+  // Clear cache on each call
+  idCache.clear();
+  const searchLower = issuer.toLowerCase();
   // Check cache first
-  const cachedId = getCachedId(`issuer:${issuer.toLowerCase()}`);
+  const cachedId = getCachedId(`issuer:${searchLower}`);
   if (cachedId) {
     logDebug(`Cache hit for issuer: ${issuer}`);
     return cachedId;
@@ -245,11 +248,16 @@ export async function getIssuerId(issuer: string): Promise<string> {
   const urlWithQueryParams = `${url}?search=${encodeURIComponent(issuer)}`;
 
   try {
-    // Find the issuer page link
+    // Find the issuer page link — match by text, not just href
     const linkResult = await findLink(
       urlWithQueryParams,
       (link) => {
-        return link.href.includes("issuers/");
+        if (!link.href.includes("issuers/")) return false;
+        const linkText = link.text.toLowerCase();
+        const parts = searchLower.split(/\s+/);
+        if (!parts.every(p => linkText.includes(p))) return false;
+        const afterSlash = link.href.split("issuers/")[1] || "";
+        return afterSlash.length > 0 && afterSlash !== "issuers";
       }
     );
 
@@ -283,8 +291,11 @@ export async function getIssuerId(issuer: string): Promise<string> {
  * @returns The politician ID (e.g., "C001129")
  */
 export async function getPoliticianId(politician: string): Promise<string> {
+  // Clear cache on each call to prevent stale state from previous queries
+  idCache.clear();
+  const searchLower = politician.toLowerCase();
   // Check cache first
-  const cachedId = getCachedId(`politician:${politician.toLowerCase()}`);
+  const cachedId = getCachedId(`politician:${searchLower}`);
   if (cachedId) {
     logDebug(`Cache hit for politician: ${politician}`);
     return cachedId;
@@ -294,11 +305,20 @@ export async function getPoliticianId(politician: string): Promise<string> {
   const urlWithQueryParams = `${url}?search=${encodeURIComponent(politician)}`;
 
   try {
-    // Find the politician page link
+    // Find the politician page link — match by link text, not just href.
+    // The search page is sorted by popularity, so the first href match may not be the searched politician.
     const linkResult = await findLink(
       urlWithQueryParams,
       (link) => {
-        return link.href.includes("politicians/");
+        if (!link.href.includes("politicians/")) return false;
+        // Require link text to contain the search term (handles "Nancy Pelosi", "Pelosi", etc.)
+        const linkText = link.text.toLowerCase();
+        const parts = searchLower.split(/\s+/);
+        // Match ALL parts of the search name — avoids false positives
+        if (!parts.every(p => linkText.includes(p))) return false;
+        // Must have a real politician ID (uppercase alphanumeric), not just /politicians page link
+        const afterSlash = link.href.split("politicians/")[1] || "";
+        return afterSlash.length > 0 && /^[A-Z0-9]/.test(afterSlash);
       }
     );
 
